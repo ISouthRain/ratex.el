@@ -157,6 +157,7 @@ When CALLBACK is non-nil, invoke it with the live process once startup succeeds.
 (defun ratex--dispatch-line (line)
   "Dispatch one backend output LINE."
   (let* ((json-object-type 'alist)
+         (json-key-type 'symbol)
          (json-array-type 'list)
          (json-false :false)
          (data (ignore-errors (json-read-from-string line))))

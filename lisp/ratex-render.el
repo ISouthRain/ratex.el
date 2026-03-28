@@ -67,12 +67,13 @@
         (ratex-clear-overlay)
         (when ratex--last-error
           (message "RaTeX render failed: %s" ratex--last-error)))
-    (let ((image (create-image
-                  (alist-get 'svg response)
-                  'svg t
-                  :ascent (floor (* 100.0
-                                    (/ (alist-get 'baseline response)
-                                       (max 0.001 (alist-get 'height response))))))))
+    (let* ((svg (alist-get 'svg response))
+           (baseline (or (alist-get 'baseline response) 0.0))
+           (height (max 0.001 (or (alist-get 'height response) 0.0)))
+           (image (create-image
+                   svg
+                   'svg t
+                   :ascent (floor (* 100.0 (/ baseline height))))))
       (setq ratex--last-error nil)
       (ratex-show-overlay
        (plist-get fragment :begin)

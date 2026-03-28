@@ -3,6 +3,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'json)
 (require 'ratex-core)
 (require 'ratex-math-detect)
 
@@ -50,6 +51,18 @@
 (ert-deftest ratex-backend-root-override-wins ()
   (let ((ratex-backend-root "/tmp/ratex-root/"))
     (should (equal (ratex-root) "/tmp/ratex-root/"))))
+
+(ert-deftest ratex-json-response-uses-symbol-keys ()
+  (let* ((json-object-type 'alist)
+         (json-key-type 'symbol)
+         (json-array-type 'list)
+         (json-false :false)
+         (payload (json-read-from-string
+                   "{\"id\":1,\"ok\":true,\"height\":2.0,\"baseline\":1.0}")))
+    (should (equal (alist-get 'id payload) 1))
+    (should (equal (alist-get 'ok payload) t))
+    (should (equal (alist-get 'height payload) 2.0))
+    (should (equal (alist-get 'baseline payload) 1.0))))
 
 (provide 'ratex-tests)
 
