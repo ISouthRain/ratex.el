@@ -8,36 +8,30 @@
 (require 'ratex-math-detect)
 (require 'ratex-overlays)
 
-(defcustom ratex-idle-delay 0.25
-  "Idle delay before rerendering the fragment at point."
-  :type 'number)
-
-(defvar-local ratex--idle-timer nil)
 (defvar-local ratex--last-request-id nil)
 (defvar-local ratex--render-cache (make-hash-table :test #'equal))
 (defvar-local ratex--last-error nil)
+(defvar-local ratex--active-fragment nil)
 
 (defun ratex-render-fragment-at-point ()
-  "Render the math fragment at point."
+  "Render the last formula fragment when point is outside it."
   (interactive)
   (let ((fragment (ratex-fragment-at-point)))
-    (if (not fragment)
-        (ratex-clear-overlay)
-      (ratex--render-fragment fragment))))
+    (cond
+     (fragment
+      (setq ratex--active-fragment fragment)
+      (ratex-clear-overlay))
+     (ratex--active-fragment
+      (let ((to-render ratex--active-fragment))
+        (setq ratex--active-fragment nil)
+        (ratex--render-fragment to-render)))
+     (t
+      (ratex-clear-overlay)))))
 
-(defun ratex-schedule-render ()
-  "Schedule an async render for the current buffer."
-  (when (timerp ratex--idle-timer)
-    (cancel-timer ratex--idle-timer))
-  (setq ratex--idle-timer
-        (run-with-idle-timer
-         ratex-idle-delay nil
-         (lambda (buffer)
-           (when (buffer-live-p buffer)
-             (with-current-buffer buffer
-               (when ratex-mode
-                 (ratex-render-fragment-at-point)))))
-         (current-buffer))))
+(defun ratex-handle-post-command ()
+  "Update preview state after each command."
+  (when ratex-mode
+    (ratex-render-fragment-at-point)))
 
 (defun ratex--render-fragment (fragment)
   "Render FRAGMENT plist."
@@ -57,7 +51,8 @@
                (when (equal (alist-get 'id response) ratex--last-request-id)
                  (when (alist-get 'ok response)
                    (puthash cache-key response ratex--render-cache))
-                 (ratex--display-response fragment response))))))))
+                 (unless (ratex-fragment-at-point)
+                   (ratex--display-response fragment response)))))))))
 
 (defun ratex--display-response (fragment response)
   "Display backend RESPONSE for FRAGMENT."

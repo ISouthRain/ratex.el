@@ -96,8 +96,14 @@ After that, Emacs launches the compiled backend binary directly.
 
 ## Usage
 
-Put point inside a supported math fragment, then wait briefly for the idle timer
-to trigger rendering.
+The current interaction model is:
+
+- when point enters a math fragment, preview is hidden
+- while point stays inside that fragment, nothing is rendered
+- when point leaves that fragment, `ratex.el` immediately renders it
+
+In other words, editing suppresses preview, and leaving the formula triggers
+preview refresh.
 
 Supported delimiters in the current prototype:
 
@@ -106,7 +112,7 @@ Supported delimiters in the current prototype:
 - `\(...\)`
 - `\[...\]`
 
-You can also trigger a manual refresh with:
+You can also trigger the transition logic manually with:
 
 ```elisp
 M-x ratex-render-fragment-at-point

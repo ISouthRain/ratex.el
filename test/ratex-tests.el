@@ -5,6 +5,7 @@
 (require 'ert)
 (require 'json)
 (require 'ratex-core)
+(require 'ratex-render)
 (require 'ratex-math-detect)
 
 (ert-deftest ratex-detects-dollar-math ()
@@ -63,6 +64,24 @@
     (should (equal (alist-get 'ok payload) t))
     (should (equal (alist-get 'height payload) 2.0))
     (should (equal (alist-get 'baseline payload) 1.0))))
+
+(ert-deftest ratex-renders-only-after-leaving-fragment ()
+  (with-temp-buffer
+    (insert "aa $x+1$ bb")
+    (goto-char 6)
+    (let (rendered)
+      (cl-letf (((symbol-function 'ratex--render-fragment)
+                 (lambda (fragment)
+                   (setq rendered fragment)))
+                ((symbol-function 'ratex-clear-overlay)
+                 (lambda () nil)))
+        (ratex-render-fragment-at-point)
+        (should (equal (plist-get ratex--active-fragment :content) "x+1"))
+        (should-not rendered)
+        (goto-char 1)
+        (ratex-render-fragment-at-point)
+        (should (equal (plist-get rendered :content) "x+1"))
+        (should-not ratex--active-fragment)))))
 
 (provide 'ratex-tests)
 
