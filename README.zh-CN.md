@@ -1,0 +1,174 @@
+# ratex.el
+
+[English](./README.md)
+
+`ratex.el` 是一个面向 Emacs 的行内数学公式预览原型，底层使用上游
+[RaTeX](https://github.com/erweixin/RaTeX) 引擎进行解析和 SVG 渲染。
+
+它的目标是在 Emacs 中提供一个轻量、异步、低打扰的数学公式预览体验。
+
+## 功能特性
+
+- 在 Emacs 中异步预览数学公式
+- 基于 RaTeX 的 SVG 渲染
+- 第一次使用时自动编译后端
+- 通过 overlay 显示公式预览
+- 支持 `latex-mode`、`LaTeX-mode`、`org-mode`、`markdown-mode`
+
+## 仓库结构
+
+- `vendor/ratex-core`：上游 RaTeX git submodule
+- `backend/`：供 Emacs 调用的 Rust 后端进程
+- `lisp/`：Emacs Lisp 包源码
+- `bin/`：开发辅助脚本
+- `test/`：Emacs 侧测试
+- `docs/`：项目文档和规划
+
+## 环境要求
+
+- Emacs 29.1 或更新版本
+- 安装好的 Rust 工具链和 `cargo`
+- clone 时已初始化 submodule
+
+## 安装方式
+
+推荐直接带 submodule 克隆：
+
+```bash
+git clone --recurse-submodules git@github.com:gongshangzheng/ratex.el.git
+cd ratex.el
+```
+
+如果你已经 clone 了仓库但没拉 submodule：
+
+```bash
+git submodule update --init --recursive
+```
+
+## Emacs 配置
+
+先把仓库中的 `lisp/` 加入 `load-path`，再加载 `ratex`：
+
+```elisp
+(add-to-list 'load-path "/path/to/ratex.el/lisp")
+(require 'ratex)
+```
+
+当前 buffer 手动启用：
+
+```elisp
+M-x ratex-mode
+```
+
+或者给常见模式自动启用：
+
+```elisp
+(require 'ratex)
+(ratex-setup)
+```
+
+如果你想自己写 hook，也可以这样：
+
+```elisp
+(add-hook 'latex-mode-hook #'ratex-mode)
+(add-hook 'LaTeX-mode-hook #'ratex-mode)
+(add-hook 'org-mode-hook #'ratex-mode)
+(add-hook 'markdown-mode-hook #'ratex-mode)
+```
+
+## 自动编译机制
+
+`ratex-mode` 启动时会检查后端二进制是否存在：
+
+```text
+backend/target/debug/ratex-editor-backend
+```
+
+如果二进制不存在，或者 `backend/` 下的源码比它更新，Emacs 会自动执行：
+
+```bash
+cargo build --manifest-path backend/Cargo.toml
+```
+
+编译成功后，会直接启动编译好的 backend。也就是说，正常情况下你在 `git pull`
+之后重新打开 Emacs 并启用 `ratex-mode`，如果后端需要重新编译，它会自动完成。
+
+## 如何使用
+
+把光标放在一个支持的数学片段内部，稍等片刻，空闲计时器会自动触发渲染。
+
+当前原型支持的分隔符有：
+
+- `$...$`
+- `$$...$$`
+- `\(...\)`
+- `\[...\]`
+
+也可以手动触发当前光标所在公式的渲染：
+
+```elisp
+M-x ratex-render-fragment-at-point
+```
+
+如果你想手动重新编译 backend：
+
+```elisp
+M-x ratex-build-backend-command
+```
+
+## 使用示例
+
+在 LaTeX、Org 或 Markdown buffer 里，把光标放在下面的公式内部：
+
+```tex
+$\frac{1}{2}$
+```
+
+或者：
+
+```tex
+\[
+\int_0^1 x^2\,dx
+\]
+```
+
+`ratex.el` 会把公式发送给 Rust backend，收到 SVG 后通过 overlay 在 buffer 中显示预览。
+
+## 可配置项
+
+目前比较常用的自定义变量有：
+
+- `ratex-font-size`：发送给 backend 的 SVG 字号
+- `ratex-svg-padding`：发送给 backend 的 SVG 边距
+- `ratex-auto-build-backend`：是否自动编译 backend
+- `ratex-backend-build-command`：backend 编译命令
+- `ratex-backend-binary`：backend 二进制路径
+
+例如：
+
+```elisp
+(setq ratex-font-size 18.0)
+(setq ratex-svg-padding 3.0)
+```
+
+## 手动启动后端
+
+如果你在做本地开发，也可以手动运行 backend：
+
+```bash
+bin/dev-start-backend.sh
+```
+
+## 当前状态
+
+这还是一个早期原型。目前主链路已经可用，但仍然有不少可以继续打磨的地方：
+
+- 更懂模式语法的公式检测
+- 更稳健的过期响应处理
+- 更友好的错误提示
+- 面向 MELPA 等包管理器的打包
+
+## 许可证说明
+
+当前仓库包含我们自己的 `ratex.el` 集成代码，以及 `vendor/ratex-core`
+这个上游 submodule。上游部分保持其原有许可证和历史。

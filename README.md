@@ -1,38 +1,180 @@
 # ratex.el
 
-An Emacs-focused project built around the upstream RaTeX engine.
+[简体中文](./README.zh-CN.md)
 
-## Repository layout
+`ratex.el` is an Emacs-focused inline math preview package built on top of the
+upstream [RaTeX](https://github.com/erweixin/RaTeX) engine.
 
-- `vendor/ratex-core`: upstream RaTeX repository, kept as a git submodule
-- `backend/`: Rust backend process for editor integrations
-- `docs/`: planning notes and project documentation
-- `lisp/`: Emacs Lisp package sources
-- `bin/`: helper scripts for local development
+It is designed to render LaTeX math fragments inside Emacs with a small async
+backend, SVG output, and minimal setup.
+
+## Features
+
+- Async inline math preview inside Emacs
+- SVG rendering backed by RaTeX
+- Automatic backend build on first use
+- Lightweight in-buffer rendering flow
+- Works with `latex-mode`, `LaTeX-mode`, `org-mode`, and `markdown-mode`
+
+## Repository Layout
+
+- `vendor/ratex-core`: upstream RaTeX git submodule
+- `backend/`: Rust backend process used by Emacs
+- `lisp/`: Emacs Lisp package files
+- `bin/`: helper scripts
 - `test/`: Emacs-side tests
+- `docs/`: project notes and plans
 
-## Current status
+## Requirements
 
-This repository now contains a minimal end-to-end prototype:
+- Emacs 29.1 or newer
+- Rust toolchain with `cargo`
+- A checkout with submodules initialized
 
-- a standalone JSONL backend that renders LaTeX fragments to SVG
-- an Emacs minor mode with async inline previews
-- basic math fragment detection and overlay display
+## Installation
 
-## Getting started
+Clone the repository with submodules:
 
-Load [`ratex.el`](/Users/zhengxinyu/code/ratex.el/lisp/ratex.el) in Emacs and enable `ratex-mode`
-in a supported buffer. On first use, the package will automatically run:
+```bash
+git clone --recurse-submodules git@github.com:gongshangzheng/ratex.el.git
+cd ratex.el
+```
+
+If you already cloned it without submodules:
+
+```bash
+git submodule update --init --recursive
+```
+
+## Emacs Setup
+
+Add this repository to your `load-path`, then load `ratex`:
+
+```elisp
+(add-to-list 'load-path "/path/to/ratex.el/lisp")
+(require 'ratex)
+```
+
+Enable it manually in the current buffer:
+
+```elisp
+M-x ratex-mode
+```
+
+Or enable it automatically for common text/math modes:
+
+```elisp
+(require 'ratex)
+(ratex-setup)
+```
+
+Equivalent explicit hook setup:
+
+```elisp
+(add-hook 'latex-mode-hook #'ratex-mode)
+(add-hook 'LaTeX-mode-hook #'ratex-mode)
+(add-hook 'org-mode-hook #'ratex-mode)
+(add-hook 'markdown-mode-hook #'ratex-mode)
+```
+
+## How It Works
+
+When `ratex-mode` starts, it checks whether the backend binary exists at:
+
+```text
+backend/target/debug/ratex-editor-backend
+```
+
+If the binary is missing, or the backend sources are newer than the binary,
+`ratex.el` automatically runs:
 
 ```bash
 cargo build --manifest-path backend/Cargo.toml
 ```
 
-if the backend binary is missing or older than the backend sources. After that,
-Emacs launches the compiled binary directly from `backend/target/debug/`.
+After that, Emacs launches the compiled backend binary directly.
 
-For manual local development, you can still start the backend yourself:
+## Usage
+
+Put point inside a supported math fragment, then wait briefly for the idle timer
+to trigger rendering.
+
+Supported delimiters in the current prototype:
+
+- `$...$`
+- `$$...$$`
+- `\(...\)`
+- `\[...\]`
+
+You can also trigger a manual refresh with:
+
+```elisp
+M-x ratex-render-fragment-at-point
+```
+
+If needed, you can rebuild the backend manually with:
+
+```elisp
+M-x ratex-build-backend-command
+```
+
+## Example
+
+In a LaTeX, Org, or Markdown buffer, place point inside:
+
+```tex
+$\frac{1}{2}$
+```
+
+or:
+
+```tex
+\[
+\int_0^1 x^2\,dx
+\]
+```
+
+`ratex.el` will ask the backend to render the fragment and show the SVG preview
+through an overlay.
+
+## Customization
+
+Useful variables:
+
+- `ratex-font-size`: SVG font size sent to the backend
+- `ratex-svg-padding`: SVG padding sent to the backend
+- `ratex-auto-build-backend`: whether to build automatically
+- `ratex-backend-build-command`: build command
+- `ratex-backend-binary`: backend binary path
+
+Example:
+
+```elisp
+(setq ratex-font-size 18.0)
+(setq ratex-svg-padding 3.0)
+```
+
+## Manual Backend Development
+
+You can still start the backend yourself during development:
 
 ```bash
 bin/dev-start-backend.sh
 ```
+
+## Current Status
+
+This is an early prototype. The core rendering path is working, but the package
+still needs more polish in areas such as:
+
+- mode-aware math detection
+- better stale-response handling
+- richer user-facing error reporting
+- packaging for MELPA or other package managers
+
+## License
+
+This repository currently contains original `ratex.el` integration code plus the
+vendored upstream `vendor/ratex-core` submodule, which keeps its own upstream
+license and history.
+
