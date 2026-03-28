@@ -35,6 +35,12 @@
   (ratex-build-backend))
 
 ;;;###autoload
+(defun ratex-diagnose-backend-command ()
+  "Display backend resolution information for ratex.el."
+  (interactive)
+  (ratex-diagnose-backend))
+
+;;;###autoload
 (defun ratex-setup ()
   "Enable `ratex-mode' in common text/math buffers."
   (interactive)

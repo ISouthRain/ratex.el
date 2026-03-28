@@ -23,8 +23,18 @@
 
 (defcustom ratex-backend-binary
   "backend/target/debug/ratex-editor-backend"
-  "Path to the compiled backend binary, relative to the project root."
+  "Path to the compiled backend binary.
+
+If relative, it is resolved from `ratex-backend-root' when set, otherwise from
+the discovered ratex.el installation root."
   :type 'string)
+
+(defcustom ratex-backend-root nil
+  "Absolute path to the ratex.el repository root.
+
+Set this when auto-detection cannot reliably find the backend location."
+  :type '(choice (const :tag "Auto detect" nil)
+                 directory))
 
 (defcustom ratex-auto-build-backend t
   "When non-nil, build the backend automatically if needed before startup."
@@ -55,12 +65,10 @@
 
 (defun ratex-root ()
   "Return the installed root directory of ratex.el."
-  (file-name-directory
-   (directory-file-name
-    (file-name-directory
-     (or load-file-name
-         (locate-library "ratex-core.el")
-         (buffer-file-name))))))
+  (or (and ratex-backend-root
+           (file-name-as-directory (expand-file-name ratex-backend-root)))
+      (ratex--discover-root)
+      (error "Could not determine ratex.el root; set `ratex-backend-root'")))
 
 (defun ratex-backend-live-p ()
   "Return non-nil when the backend process is alive."
@@ -104,7 +112,8 @@ When CALLBACK is non-nil, invoke it with the live process once startup succeeds.
   "Build the backend binary asynchronously."
   (interactive)
   (unless (ratex--build-in-progress-p)
-    (let* ((default-directory (ratex--project-root))
+    (let* ((root (ratex--project-root))
+           (default-directory root)
            (program (car ratex-backend-build-command))
            (args (cdr ratex-backend-build-command)))
       (setq ratex--build-warned nil)
@@ -117,7 +126,7 @@ When CALLBACK is non-nil, invoke it with the live process once startup succeeds.
              :connection-type 'pipe
              :noquery t
              :sentinel #'ratex--build-sentinel))
-      (message "Building RaTeX backend..."))))
+      (message "Building RaTeX backend in %s..." root))))
 
 (defun ratex-request (payload callback)
   "Send PAYLOAD to backend and invoke CALLBACK with parsed response."
@@ -170,8 +179,9 @@ When CALLBACK is non-nil, invoke it with the live process once startup succeeds.
 
 (defun ratex--launch-backend ()
   "Launch the compiled backend binary."
-  (let* ((default-directory (ratex--project-root))
-         (binary (expand-file-name ratex-backend-binary default-directory)))
+  (let* ((root (ratex--project-root))
+         (default-directory root)
+         (binary (ratex--backend-binary-path)))
     (setq ratex--read-buffer "")
     (setq ratex--process
           (make-process
@@ -186,8 +196,7 @@ When CALLBACK is non-nil, invoke it with the live process once startup succeeds.
 
 (defun ratex--backend-ready-p ()
   "Return non-nil if the backend binary exists and is newer than the sources."
-  (let* ((root (ratex--project-root))
-         (binary (expand-file-name ratex-backend-binary root)))
+  (let ((binary (ratex--backend-binary-path)))
     (and (file-exists-p binary)
          (not (ratex--backend-source-newer-p binary)))))
 
@@ -229,9 +238,73 @@ When CALLBACK is non-nil, invoke it with the live process once startup succeeds.
     (setq ratex--build-warned t)
     (display-warning 'ratex message-text :warning)))
 
+(defun ratex-diagnose-backend ()
+  "Show the current backend resolution state."
+  (interactive)
+  (let* ((root (condition-case err
+                   (ratex--project-root)
+                 (error (format "ERROR: %s" (error-message-string err)))))
+         (binary (condition-case err
+                     (ratex--backend-binary-path)
+                   (error (format "ERROR: %s" (error-message-string err)))))
+         (message-text
+          (format
+           (concat "ratex root: %s\n"
+                   "backend binary: %s\n"
+                   "binary exists: %s\n"
+                   "auto build: %s\n"
+                   "build command: %S")
+           root
+           binary
+           (and (stringp binary) (file-exists-p binary))
+           ratex-auto-build-backend
+           ratex-backend-build-command)))
+    (if (called-interactively-p 'interactive)
+        (message "%s" message-text)
+      message-text)))
+
 (defun ratex--project-root ()
   "Return the root directory for ratex.el."
   (ratex-root))
+
+(defun ratex--backend-binary-path ()
+  "Return the absolute path of the backend binary."
+  (let ((binary ratex-backend-binary))
+    (if (file-name-absolute-p binary)
+        binary
+      (expand-file-name binary (ratex--project-root)))))
+
+(defun ratex--discover-root ()
+  "Discover the ratex.el root directory."
+  (let ((candidates
+         (delq nil
+               (mapcar
+                #'ratex--candidate-root
+                (list load-file-name
+                      (locate-library "ratex-core.el")
+                      (locate-library "ratex.el")
+                      (buffer-file-name))))))
+    (seq-find #'ratex--valid-root-p candidates)))
+
+(defun ratex--candidate-root (path)
+  "Return a possible ratex root for PATH."
+  (when path
+    (let* ((full (expand-file-name path))
+           (dir (file-name-directory full)))
+      (cond
+       ((not dir) nil)
+       ((string-match-p "/lisp/?\\'" dir)
+        (file-name-directory (directory-file-name dir)))
+       ((file-directory-p full)
+        full)
+       (t
+        (locate-dominating-file dir "backend/Cargo.toml"))))))
+
+(defun ratex--valid-root-p (path)
+  "Return non-nil when PATH looks like a valid ratex.el root."
+  (and path
+       (file-exists-p (expand-file-name "backend/Cargo.toml" path))
+       (file-directory-p (expand-file-name "lisp" path))))
 
 (provide 'ratex-core)
 

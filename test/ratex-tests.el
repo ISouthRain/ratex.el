@@ -47,6 +47,10 @@
              "/Users/zhengxinyu/code/ratex.el"
              (directory-file-name (ratex--project-root))))))
 
+(ert-deftest ratex-backend-root-override-wins ()
+  (let ((ratex-backend-root "/tmp/ratex-root/"))
+    (should (equal (ratex-root) "/tmp/ratex-root/"))))
+
 (provide 'ratex-tests)
 
 ;;; ratex-tests.el ends here

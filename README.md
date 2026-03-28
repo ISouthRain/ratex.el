@@ -141,6 +141,7 @@ through an overlay.
 
 Useful variables:
 
+- `ratex-backend-root`: explicit repository root for backend discovery
 - `ratex-font-size`: SVG font size sent to the backend
 - `ratex-svg-padding`: SVG padding sent to the backend
 - `ratex-auto-build-backend`: whether to build automatically
@@ -150,8 +151,16 @@ Useful variables:
 Example:
 
 ```elisp
+(setq ratex-backend-root "/path/to/ratex.el/")
 (setq ratex-font-size 18.0)
 (setq ratex-svg-padding 3.0)
+```
+
+If backend auto-discovery still fails in your setup, set `ratex-backend-root`
+explicitly. You can inspect the current detection result with:
+
+```elisp
+M-x ratex-diagnose-backend-command
 ```
 
 ## Manual Backend Development
@@ -177,4 +186,3 @@ still needs more polish in areas such as:
 This repository currently contains original `ratex.el` integration code plus the
 vendored upstream `vendor/ratex-core` submodule, which keeps its own upstream
 license and history.
-

@@ -138,6 +138,7 @@ $\frac{1}{2}$
 
 目前比较常用的自定义变量有：
 
+- `ratex-backend-root`：显式指定 ratex.el 仓库根目录
 - `ratex-font-size`：发送给 backend 的 SVG 字号
 - `ratex-svg-padding`：发送给 backend 的 SVG 边距
 - `ratex-auto-build-backend`：是否自动编译 backend
@@ -147,8 +148,16 @@ $\frac{1}{2}$
 例如：
 
 ```elisp
+(setq ratex-backend-root "/path/to/ratex.el/")
 (setq ratex-font-size 18.0)
 (setq ratex-svg-padding 3.0)
+```
+
+如果你的加载方式比较特殊，自动探测 backend 路径仍然失败，建议直接设置
+`ratex-backend-root`。你也可以执行下面的命令查看当前解析到的后端路径：
+
+```elisp
+M-x ratex-diagnose-backend-command
 ```
 
 ## 手动启动后端
