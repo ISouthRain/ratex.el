@@ -235,7 +235,15 @@ currently under point."
       (if (ratex-edit-preview-posframe-enabled-p)
           (progn
             (ratex-remove-overlay fragment-key)
-            (ratex--display-posframe fragment response))
+            (unless (ratex--display-posframe fragment response)
+              (ratex-show-overlay
+               fragment-key
+               (plist-get fragment :begin)
+               (plist-get fragment :end)
+               (create-image (alist-get 'svg response) 'svg t)
+               "RaTeX render"
+               fragment
+               'inline)))
         (ratex-remove-overlay fragment-key)))
      (t
       (ratex--display-response fragment-key fragment response 'inline)))))
@@ -294,19 +302,21 @@ currently under point."
                    svg
                    'svg t
                    :ascent (floor (* 100.0 (/ baseline height))))))
-      (with-current-buffer (get-buffer-create ratex--posframe-buffer)
-        (erase-buffer)
-        (insert (propertize " " 'display image)))
-      (posframe-show
-       ratex--posframe-buffer
-       :position (point)
-       :poshandler (or ratex-posframe-poshandler
-                       #'ratex-posframe-poshandler-point-bottom-left-corner-offset)
-       :border-width 1
-       :border-color ratex-posframe-border-color
-       :background-color ratex-posframe-background-color)
-      (setq ratex--posframe-visible t)
-      (setq ratex--posframe-fragment fragment))))
+      (when image
+        (with-current-buffer (get-buffer-create ratex--posframe-buffer)
+          (erase-buffer)
+          (insert (propertize " " 'display image)))
+        (posframe-show
+         ratex--posframe-buffer
+         :position (point)
+         :poshandler (or ratex-posframe-poshandler
+                         #'ratex-posframe-poshandler-point-bottom-left-corner-offset)
+         :border-width 1
+         :border-color ratex-posframe-border-color
+         :background-color ratex-posframe-background-color)
+        (setq ratex--posframe-visible t)
+        (setq ratex--posframe-fragment fragment)
+        t))))
 
 (defun ratex-posframe-poshandler-point-bottom-left-corner-offset (info)
   "Position posframe 5px below `posframe-poshandler-point-bottom-left-corner`."
@@ -354,9 +364,12 @@ currently under point."
   (ratex--hide-posframe))
 
 (defun ratex-handle-buffer-switch ()
-  "Hide posframe when buffer is not active."
-  (unless (and ratex-mode (eq (current-buffer) (window-buffer)))
-    (ratex--hide-posframe)))
+  "Hide posframe when switching buffers."
+  (when ratex-edit-preview-posframe
+    (dolist (buffer (buffer-list))
+      (with-current-buffer buffer
+        (when ratex-mode
+          (ratex--hide-posframe))))))
 
 (provide 'ratex-render)
 

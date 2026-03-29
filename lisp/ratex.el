@@ -23,11 +23,11 @@
       (progn
         (ratex-reset-buffer-state)
         (add-hook 'post-command-hook #'ratex-handle-post-command nil t)
-        (add-hook 'buffer-list-update-hook #'ratex-handle-buffer-switch nil t)
+        (add-hook 'buffer-list-update-hook #'ratex-handle-buffer-switch)
         (ratex-start-backend)
         (ratex-initialize-previews))
     (remove-hook 'post-command-hook #'ratex-handle-post-command t)
-    (remove-hook 'buffer-list-update-hook #'ratex-handle-buffer-switch t)
+    (remove-hook 'buffer-list-update-hook #'ratex-handle-buffer-switch)
     (ratex-handle-buffer-switch)
     (ratex-clear-overlays)
     (ratex-reset-buffer-state)))
