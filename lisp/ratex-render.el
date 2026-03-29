@@ -21,6 +21,7 @@
 (defvar-local ratex--last-error nil)
 (defvar-local ratex--active-fragment nil)
 (defvar-local ratex--posframe-visible nil)
+(defvar-local ratex--posframe-fragment nil)
 (defconst ratex--posframe-buffer " *ratex-preview*")
 (defconst ratex--posframe-offset-y 5)
 
@@ -30,7 +31,9 @@
   (setq-local ratex--inflight-requests (make-hash-table :test #'equal))
   (setq-local ratex--inflight-waiters (make-hash-table :test #'equal))
   (setq-local ratex--last-error nil)
-  (setq-local ratex--active-fragment nil))
+  (setq-local ratex--active-fragment nil)
+  (setq-local ratex--posframe-visible nil)
+  (setq-local ratex--posframe-fragment nil))
 
 (defun ratex-refresh-previews (&optional include-active)
   "Refresh math previews in current buffer.
@@ -58,6 +61,7 @@ currently under point."
 (defun ratex-handle-post-command ()
   "Update previews only when point enters/leaves math fragments."
   (when ratex-mode
+    (ratex--update-posframe-position)
     (let ((current (ratex--active-fragment-at-point))
           (previous ratex--active-fragment))
       (cond
@@ -295,13 +299,14 @@ currently under point."
         (insert (propertize " " 'display image)))
       (posframe-show
        ratex--posframe-buffer
-       :position (plist-get fragment :begin)
+       :position (point)
        :poshandler (or ratex-posframe-poshandler
                        #'ratex-posframe-poshandler-point-bottom-left-corner-offset)
        :border-width 1
        :border-color ratex-posframe-border-color
        :background-color ratex-posframe-background-color)
-      (setq ratex--posframe-visible t))))
+      (setq ratex--posframe-visible t)
+      (setq ratex--posframe-fragment fragment))))
 
 (defun ratex-posframe-poshandler-point-bottom-left-corner-offset (info)
   "Position posframe 5px below `posframe-poshandler-point-bottom-left-corner`."
@@ -315,7 +320,38 @@ currently under point."
   (when (featurep 'posframe)
     (when ratex--posframe-visible
       (posframe-hide ratex--posframe-buffer))
-    (setq ratex--posframe-visible nil)))
+    (setq ratex--posframe-visible nil)
+    (setq ratex--posframe-fragment nil)))
+
+(defun ratex--update-posframe-position ()
+  "Keep posframe aligned with point while editing."
+  (when (and ratex--posframe-visible
+             (ratex-edit-preview-posframe-enabled-p)
+             (featurep 'posframe)
+             (fboundp 'posframe-workable-p)
+             (posframe-workable-p))
+    (if (ratex--point-in-fragment-p ratex--posframe-fragment)
+        (posframe-show
+         ratex--posframe-buffer
+         :position (point)
+         :poshandler (or ratex-posframe-poshandler
+                         #'ratex-posframe-poshandler-point-bottom-left-corner-offset)
+         :border-width 1
+         :border-color ratex-posframe-border-color
+         :background-color ratex-posframe-background-color)
+      (ratex--hide-posframe))))
+
+(defun ratex-show-posframe-at-point ()
+  "Show a RaTeX posframe preview for the formula at point."
+  (interactive)
+  (let ((fragment (ratex--active-fragment-at-point)))
+    (when (and fragment (ratex-edit-preview-posframe-enabled-p))
+      (ratex--ensure-fragment-preview fragment))))
+
+(defun ratex-hide-posframe ()
+  "Hide the RaTeX posframe preview."
+  (interactive)
+  (ratex--hide-posframe))
 
 (defun ratex-handle-buffer-switch ()
   "Hide posframe when buffer is not active."

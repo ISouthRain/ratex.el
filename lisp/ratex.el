@@ -45,6 +45,18 @@
   (ratex-diagnose-backend))
 
 ;;;###autoload
+(defun ratex-show-posframe-command ()
+  "Show a RaTeX posframe preview at point."
+  (interactive)
+  (ratex-show-posframe-at-point))
+
+;;;###autoload
+(defun ratex-hide-posframe-command ()
+  "Hide the RaTeX posframe preview."
+  (interactive)
+  (ratex-hide-posframe))
+
+;;;###autoload
 (defun ratex-setup ()
   "Enable `ratex-mode' in common text/math buffers."
   (interactive)
