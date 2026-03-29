@@ -39,7 +39,7 @@
 推荐直接带 submodule 克隆：
 
 ```bash
-git clone --recurse-submodules git@github.com:gongshangzheng/ratex.el.git
+git clone --recurse-submodules https://github.com/gongshangzheng/ratex.el.git
 cd ratex.el
 ```
 

@@ -40,7 +40,7 @@ backend, SVG output, and minimal setup.
 Clone the repository with submodules:
 
 ```bash
-git clone --recurse-submodules git@github.com:gongshangzheng/ratex.el.git
+git clone --recurse-submodules https://github.com/gongshangzheng/ratex.el.git
 cd ratex.el
 ```
 
