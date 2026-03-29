@@ -113,6 +113,8 @@ Supported delimiters in the current prototype:
 - `\(...\)`
 - `\[...\]`
 
+We recommend `\(...\)` and `\[...\]`. `$$...$$` may cause rendering issues in some cases.
+
 These cases are skipped by default and will not be rendered:
 
 - formulas inside code blocks (for example Org src/example/verbatim blocks and
