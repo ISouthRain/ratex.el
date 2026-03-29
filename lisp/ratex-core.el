@@ -53,6 +53,13 @@ Set this when auto-detection cannot reliably find the backend location."
   "Default SVG padding sent to the backend."
   :type 'number)
 
+(defcustom ratex-render-color nil
+  "Default formula color sent to backend rendering.
+
+Use nil to keep backend defaults."
+  :type '(choice (const :tag "Backend default" nil)
+                 string))
+
 (defvar ratex--process nil)
 (defvar ratex--process-buffer " *ratex-backend*")
 (defvar ratex--build-buffer " *ratex-backend-build*")

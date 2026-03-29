@@ -27,14 +27,16 @@
       (delete-overlay overlay))
     (remhash key table)))
 
-(defun ratex-show-overlay (key beg end image &optional help-echo)
-  "Show IMAGE for KEY at BEG..END with optional HELP-ECHO."
+(defun ratex-show-overlay (key beg end image &optional help-echo fragment)
+  "Show IMAGE for KEY at BEG..END with optional HELP-ECHO and FRAGMENT."
   (let ((table (ratex--overlay-table))
         (overlay nil))
     (ratex-remove-overlay key)
     (setq overlay (make-overlay beg end))
     (overlay-put overlay 'display image)
     (overlay-put overlay 'evaporate t)
+    (overlay-put overlay 'ratex-key key)
+    (overlay-put overlay 'ratex-fragment fragment)
     (puthash key overlay table))
   (when help-echo
     (overlay-put (gethash key (ratex--overlay-table)) 'help-echo help-echo)))
@@ -47,6 +49,32 @@
                  (push key keys))
                ratex--overlays))
     keys))
+
+(defun ratex--overlay-entry-at-point ()
+  "Return (KEY . OVERLAY) for a visible RaTeX overlay at point, or nil."
+  (let ((pos (point))
+        found)
+    (when (hash-table-p ratex--overlays)
+      (maphash
+       (lambda (key overlay)
+         (when (and (not found)
+                    (overlayp overlay)
+                    (overlay-buffer overlay)
+                    (<= (overlay-start overlay) pos)
+                    (< pos (overlay-end overlay)))
+           (setq found (cons key overlay))))
+       ratex--overlays))
+    found))
+
+(defun ratex-rendered-overlay-at-point-p ()
+  "Return non-nil when point is inside a visible RaTeX rendered overlay."
+  (and (ratex--overlay-entry-at-point) t))
+
+(defun ratex-overlay-fragment-at-point ()
+  "Return fragment metadata from the RaTeX overlay at point, or nil."
+  (let ((entry (ratex--overlay-entry-at-point)))
+    (when entry
+      (overlay-get (cdr entry) 'ratex-fragment))))
 
 (provide 'ratex-overlays)
 
