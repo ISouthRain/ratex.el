@@ -17,14 +17,14 @@
 (require 'json)
 (require 'subr-x)
 
-(autoload 'url-copy-file "url-handlers")
+(require 'url)
 
 (defgroup ratex nil
   "Inline math rendering with RaTeX."
   :group 'tex)
 
 (defcustom ratex-backend-binary
-  (concat "backend/target/ratex-editor-backend"
+  (concat "backend/target/release/ratex-editor-backend"
           (if (eq system-type 'windows-nt) ".exe" ""))
   "Path to the backend binary managed by ratex.el.
 
@@ -90,6 +90,8 @@ Use nil to keep backend defaults."
 (defvar ratex--next-id 0)
 (defvar ratex--read-buffer "")
 (defvar ratex--startup-warned nil)
+(defvar ratex--startup-callbacks nil)
+(defvar ratex--download-in-progress nil)
 
 (defun ratex-root ()
   "Return the installed root directory of ratex.el."
@@ -111,6 +113,10 @@ When CALLBACK is non-nil, invoke it with the live process once startup succeeds.
     (when callback
       (funcall callback ratex--process))
     ratex--process)
+   (ratex--download-in-progress
+    (when callback
+      (push callback ratex--startup-callbacks))
+    nil)
    ((ratex--backend-ready-p)
     (condition-case err
         (progn
@@ -120,36 +126,20 @@ When CALLBACK is non-nil, invoke it with the live process once startup succeeds.
           ratex--process)
       (error
        (if ratex-auto-download-backend
-           (condition-case retry-err
-               (progn
-                 (ratex--delete-backend-binary)
-                 (ratex-download-backend)
-                 (ratex--launch-backend)
-                 (when callback
-                   (funcall callback ratex--process))
-                 ratex--process)
-             (error
-              (ratex--warn
-               (format "RaTeX backend recovery failed: %s"
-                       (error-message-string retry-err)))
-              nil))
+           (progn
+             (ratex--delete-backend-binary)
+             (when callback
+               (push callback ratex--startup-callbacks))
+             (ratex--download-backend-async))
          (ratex--warn
           (format "RaTeX backend launch failed: %s"
                   (error-message-string err)))
          nil))))
    (ratex-auto-download-backend
-    (condition-case err
-        (progn
-          (ratex-download-backend)
-          (ratex--launch-backend)
-          (when callback
-            (funcall callback ratex--process))
-          ratex--process)
-      (error
-       (ratex--warn
-        (format "RaTeX backend download failed: %s"
-                (error-message-string err)))
-       nil)))
+    (when callback
+      (push callback ratex--startup-callbacks))
+    (ratex--download-backend-async)
+    nil)
    (t
     (ratex--warn "RaTeX backend binary is missing. Run `M-x ratex-download-backend-command`.")
     nil)))
@@ -162,30 +152,98 @@ When CALLBACK is non-nil, invoke it with the live process once startup succeeds.
   (setq ratex--process nil))
 
 (defun ratex-download-backend ()
-  "Download the backend binary from GitHub Releases."
+  "Download the backend binary from GitHub Releases asynchronously."
   (interactive)
+  (if ratex--download-in-progress
+      (message "RaTeX backend download already in progress.")
+    (ratex--download-backend-async)))
+
+(defun ratex--download-backend-async ()
+  "Start an asynchronous download of the backend binary."
   (let* ((binary (ratex--backend-binary-path))
          (directory (file-name-directory binary))
-         (temp-file (make-temp-file
-                     "ratex-backend-"
-                     nil
-                     (if (eq system-type 'windows-nt) ".exe" "")))
          (url (ratex--backend-download-url)))
     (setq ratex--startup-warned nil)
+    (setq ratex--download-in-progress t)
     (make-directory directory t)
-    (unwind-protect
-        (progn
-          (message "Downloading RaTeX backend from %s..." url)
-          (let ((url-show-status nil))
-            (url-copy-file url temp-file t))
-          (ratex--validate-backend-file temp-file url)
-          (rename-file temp-file binary t)
-          (unless (eq system-type 'windows-nt)
-            (set-file-modes binary #o755))
-          (message "RaTeX backend downloaded to %s" binary)
-          binary)
-      (when (file-exists-p temp-file)
-        (delete-file temp-file)))))
+    (message "Downloading RaTeX backend from %s..." url)
+    (url-retrieve
+     url
+     (lambda (status)
+       (let ((callbacks (nreverse ratex--startup-callbacks))
+             (temp-file (make-temp-file
+                         "ratex-backend-"
+                         nil
+                         (if (eq system-type 'windows-nt) ".exe" ""))))
+         (setq ratex--startup-callbacks nil)
+         (setq ratex--download-in-progress nil)
+         (unwind-protect
+             (if (or (not status)
+                     (plist-get status :error))
+                 (let ((err (plist-get status :error)))
+                   (ratex--warn
+                    (format "RaTeX backend download failed: %s"
+                            (if err (error-message-string err) "unknown error")))
+                   (dolist (cb callbacks)
+                     (funcall cb nil)))
+               (goto-char (point-min))
+               (re-search-forward "\r?\n\r?\n" nil t)
+               (let ((body-start (point)))
+                 (write-region body-start (point-max) temp-file nil 'silent))
+               (ratex--validate-backend-file temp-file url)
+               (rename-file temp-file binary t)
+               (unless (eq system-type 'windows-nt)
+                 (set-file-modes binary #o755))
+               (message "RaTeX backend downloaded to %s" binary)
+               (ratex--launch-backend)
+               (dolist (cb callbacks)
+                 (funcall cb ratex--process)))
+           (when (file-exists-p temp-file)
+             (delete-file temp-file)))))
+     nil t)))
+
+(defcustom ratex-backend-build-command
+  '("cargo" "build" "--release" "--manifest-path" "backend/Cargo.toml")
+  "Command used to build the backend binary locally.
+
+The default matches the GitHub Actions release build."
+  :type '(repeat string))
+
+(defvar ratex--build-process nil)
+(defvar ratex--build-buffer " *ratex-backend-build*")
+
+(defun ratex-build-backend ()
+  "Build the backend binary locally using cargo.
+This is intended for developers who want to compile from source
+instead of downloading a pre-built binary."
+  (interactive)
+  (when (ratex--build-in-progress-p)
+    (error "A backend build is already in progress"))
+  (let* ((root (ratex-root))
+         (default-directory root)
+         (program (car ratex-backend-build-command))
+         (args (cdr ratex-backend-build-command)))
+    (message "Building RaTeX backend...")
+    (setq ratex--build-process
+          (make-process
+           :name "ratex-backend-build"
+           :buffer ratex--build-buffer
+           :command (cons program args)
+           :coding 'utf-8-unix
+           :connection-type 'pipe
+           :noquery t
+           :sentinel
+           (lambda (_proc event)
+             (unless (process-live-p ratex--build-process)
+               (let ((success (= (process-exit-status ratex--build-process) 0)))
+                 (setq ratex--build-process nil)
+                 (if success
+                     (message "RaTeX backend build finished.")
+                   (ratex--warn "RaTeX backend build failed.")))))))))
+
+(defun ratex--build-in-progress-p ()
+  "Return non-nil if a backend build is in progress."
+  (and ratex--build-process (process-live-p ratex--build-process)))
 
 (defun ratex-request (payload callback)
   "Send PAYLOAD to backend and invoke CALLBACK with parsed response."
@@ -346,6 +404,7 @@ When CALLBACK is non-nil, invoke it with the live process once startup succeeds.
        (> (file-attribute-size (file-attributes path)) 2)
        (let ((coding-system-for-read 'no-conversion))
          (with-temp-buffer
+           (set-buffer-multibyte nil)
            (insert-file-contents-literally path nil 0 4)
            (cond
             ((eq system-type 'windows-nt)

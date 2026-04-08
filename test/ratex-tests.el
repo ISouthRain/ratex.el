@@ -9,12 +9,13 @@
 (require 'ratex-render)
 (require 'ratex-math-detect)
 
-(ert-deftest ratex-download-command-calls-download-function ()
-  (let (called)
-    (cl-letf (((symbol-function 'ratex-download-backend)
+(ert-deftest ratex-download-backend-delegates-to-async ()
+  (let (called
+        (ratex--download-in-progress nil))
+    (cl-letf (((symbol-function 'ratex--download-backend-async)
                (lambda ()
                  (setq called t))))
-      (ratex-download-backend-command)
+      (ratex-download-backend)
       (should called))))
 
 (ert-deftest ratex-detects-dollar-math ()
@@ -114,7 +115,7 @@
 (ert-deftest ratex-backend-binary-path-defaults-to-project-target-directory ()
   (let* ((root (make-temp-file "ratex-root" t))
          (ratex-backend-root root)
-         (ratex-backend-binary (concat "backend/target/ratex-editor-backend"
+         (ratex-backend-binary (concat "backend/target/release/ratex-editor-backend"
                                        (if (eq system-type 'windows-nt) ".exe" ""))))
     (should
      (equal (ratex--backend-binary-path)
