@@ -121,6 +121,24 @@
      (equal (ratex--backend-binary-path)
             (expand-file-name ratex-backend-binary root)))))
 
+(ert-deftest ratex-write-url-response-body-preserves-bytes ()
+  (let* ((output (make-temp-file "ratex-response-body-"))
+         (expected (unibyte-string ?A ?\r ?\n ?B ?\n ?C ?\xE0 ?\xFF)))
+    (unwind-protect
+        (with-temp-buffer
+          (set-buffer-multibyte nil)
+          (insert "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n\r\n")
+          (let ((body-start (point)))
+            (insert expected)
+            (goto-char body-start)
+            (ratex--write-url-response-body output))
+          (with-temp-buffer
+            (set-buffer-multibyte nil)
+            (insert-file-contents-literally output)
+            (should (equal (buffer-string) expected))))
+      (when (file-exists-p output)
+        (delete-file output)))))
+
 (ert-deftest ratex-json-response-uses-symbol-keys ()
   (let* ((json-object-type 'alist)
          (json-key-type 'symbol)

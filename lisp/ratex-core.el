@@ -178,36 +178,34 @@ When CALLBACK is non-nil, invoke it with the live process once startup succeeds.
     (url-retrieve
      url
      (lambda (status)
-       (let ((callbacks (nreverse ratex--startup-callbacks))
-             (temp-file (make-temp-file
-                         "ratex-backend-"
-                         nil
-                         (if (eq system-type 'windows-nt) ".exe" ""))))
+       (let ((callbacks (nreverse ratex--startup-callbacks)))
          (setq ratex--startup-callbacks nil)
          (setq ratex--download-in-progress nil)
-         (unwind-protect
-             (if (or (not status)
-                     (plist-get status :error))
-                 (let ((err (plist-get status :error)))
-                   (ratex--warn
-                    (format "RaTeX backend download failed: %s"
-                            (if err (error-message-string err) "unknown error")))
-                   (dolist (cb callbacks)
-                     (funcall cb nil)))
-               (goto-char (point-min))
-               (re-search-forward "\r?\n\r?\n" nil t)
-               (let ((body-start (point)))
-                 (write-region body-start (point-max) temp-file nil 'silent))
-               (ratex--validate-backend-file temp-file url)
-               (rename-file temp-file binary t)
-               (unless (eq system-type 'windows-nt)
-                 (set-file-modes binary #o755))
-               (message "RaTeX backend downloaded to %s" binary)
-               (ratex--launch-backend)
+         (if (or (not status)
+                 (plist-get status :error))
+             (let ((err (plist-get status :error)))
+               (ratex--warn
+                (format "RaTeX backend download failed: %s"
+                        (if err (error-message-string err) "unknown error")))
                (dolist (cb callbacks)
-                 (funcall cb ratex--process)))
-           (when (file-exists-p temp-file)
-             (delete-file temp-file)))))
+                 (funcall cb nil)))
+           (condition-case err
+               (progn
+                 (goto-char (point-min))
+                 (re-search-forward "\r?\n\r?\n" nil t)
+                 (ratex--write-url-response-body binary)
+                 (unless (eq system-type 'windows-nt)
+                   (set-file-modes binary #o755))
+                 (message "RaTeX backend downloaded to %s" binary)
+                 (ratex--launch-backend)
+                 (dolist (cb callbacks)
+                   (funcall cb ratex--process)))
+             (error
+              (ratex--warn
+               (format "RaTeX backend download failed: %s"
+                       (error-message-string err)))
+              (dolist (cb callbacks)
+                (funcall cb nil)))))))
      nil t)))
 
 (defcustom ratex-backend-build-command
@@ -316,7 +314,6 @@ instead of downloading a pre-built binary."
         (default-directory (ratex-root)))
     (unless (file-exists-p binary)
       (error "RaTeX backend binary does not exist: %s" binary))
-    (ratex--validate-backend-file binary)
     (setq ratex--read-buffer "")
     (setq ratex--process
           (make-process
@@ -330,10 +327,10 @@ instead of downloading a pre-built binary."
            :sentinel #'ratex--process-sentinel))))
 
 (defun ratex--backend-ready-p ()
-  "Return non-nil if the backend binary exists and looks executable."
+  "Return non-nil if the backend binary exists."
   (let ((binary (ratex--backend-binary-path)))
     (and (file-exists-p binary)
-         (ratex--backend-file-valid-p binary))))
+         (not (file-directory-p binary)))))
 
 (defun ratex--delete-backend-binary ()
   "Delete the current backend binary when it exists."
@@ -359,22 +356,17 @@ instead of downloading a pre-built binary."
          (download-url (condition-case err
                            (ratex--backend-download-url)
                          (error (format "ERROR: %s" (error-message-string err)))))
-         (valid (condition-case err
-                    (ratex--backend-file-valid-p binary)
-                  (error (format "ERROR: %s" (error-message-string err)))))
          (message-text
           (format
            (concat "ratex root: %s\n"
                    "backend binary: %s\n"
                    "binary exists: %s\n"
-                   "binary valid: %s\n"
                    "auto download: %s\n"
                    "release repo: %s\n"
                    "download url: %s")
            root
            binary
            (and (stringp binary) (file-exists-p binary))
-           valid
            ratex-auto-download-backend
            ratex-backend-release-repo
            download-url)))
@@ -387,7 +379,13 @@ instead of downloading a pre-built binary."
   (let ((binary ratex-backend-binary))
     (if (file-name-absolute-p binary)
         binary
-      (expand-file-name binary (ratex-root)))))
+     (expand-file-name binary (ratex-root)))))
+
+(defun ratex--write-url-response-body (path)
+  "Write the current `url-retrieve' response body to PATH as raw bytes."
+  (let ((body-start (point))
+        (coding-system-for-write 'no-conversion))
+    (write-region body-start (point-max) path nil 'silent)))
 
 (defun ratex--backend-download-url ()
   "Return the GitHub Release URL for the current platform backend."
@@ -404,54 +402,6 @@ instead of downloading a pre-built binary."
    ((eq system-type 'windows-nt) "ratex-editor-backend-windows.exe")
    (t
     (error "Unsupported system type for RaTeX backend: %S" system-type))))
-
-(defun ratex--backend-file-valid-p (path)
-  "Return non-nil when PATH looks like a valid executable for this platform."
-  (and (stringp path)
-       (file-exists-p path)
-       (not (file-directory-p path))
-       (> (file-attribute-size (file-attributes path)) 2)
-       (let ((coding-system-for-read 'no-conversion))
-         (with-temp-buffer
-           (set-buffer-multibyte nil)
-           (insert-file-contents-literally path nil 0 4)
-           (cond
-            ((eq system-type 'windows-nt)
-             (string-prefix-p "MZ" (buffer-string)))
-            ((eq system-type 'gnu/linux)
-             (equal (buffer-string) "\177ELF"))
-            ((eq system-type 'darwin)
-             (member (buffer-string)
-                     '("\317\372\355\376"
-                       "\316\372\355\376"
-                       "\376\355\372\317"
-                       "\376\355\372\316"
-                       "\312\376\272\276")))
-            (t nil))))))
-
-(defun ratex--validate-backend-file (path &optional source-url)
-  "Signal an error when PATH is not a valid backend executable.
-
-When SOURCE-URL is non-nil, include it in the error message."
-  (unless (ratex--backend-file-valid-p path)
-    (let ((details (condition-case nil
-                       (let ((coding-system-for-read 'utf-8-unix))
-                         (with-temp-buffer
-                           (insert-file-contents path nil 0 120)
-                           (string-trim (buffer-string))))
-                     (error nil))))
-      (error
-       (concat
-        "Downloaded backend is not a valid "
-        (pcase system-type
-          ('windows-nt "Windows executable")
-          ('gnu/linux "ELF executable")
-          ('darwin "macOS executable")
-          (_ "executable"))
-        (when source-url
-          (format " from %s" source-url))
-        (when (and details (not (string-empty-p details)))
-          (format "; file starts with: %S" details)))))))
 
 (defun ratex--discover-root ()
   "Discover the ratex.el root directory."
